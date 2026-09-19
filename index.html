@@ -493,19 +493,19 @@ function releaseLock() {
 /* ---------- 雨音モード（ランダムループ） ---------- */
 const rain = { on: false };
 function rnd(a, b) { return a + Math.random() * (b - a); }
-function fadeMode(sel, globalSel, a, b) {
+function fadeMode(sel, globalSel, a, b, dflt) {
   const v = $(sel).value;
   if (v === 'none') return 0;
-  if (v === 'fixed') return fadeSec(globalSel);
+  if (v === 'fixed') { const f = fadeSec(globalSel); return f > 0 ? f : dflt; }
   return rnd(a, b);
 }
 
 function rainCycle(r) { // ponytail: setTimeout 駆動のため長時間稼働でドリフト。要るなら AudioContext 時間軸に直す
   if (!rain.on || !r.osc) return;
   const now = audio.ctx.currentTime;
-  const fin = fadeMode('#rainFin', '#fadeIn', 0.6, 3);
+  const fin = fadeMode('#rainFin', '#fadeIn', 0.6, 3, 1.5);
   const hold = rnd(1.5, 7);
-  const fout = fadeMode('#rainFout', '#fadeOut', 0.8, 4);
+  const fout = fadeMode('#rainFout', '#fadeOut', 0.8, 4, 2.5);
   const gap = rnd(1, 5);
   const tgt = r.on ? r.gain : 0;
   const g = r.g.gain;
