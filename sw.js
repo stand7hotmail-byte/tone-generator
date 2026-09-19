@@ -1,5 +1,5 @@
 /* ToneMix service worker — precache & offline-first */
-const VERSION = 'tonemix-v1';
+const VERSION = 'tonemix-v3';
 const ASSETS = [
   './',
   './index.html',

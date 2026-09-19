@@ -173,6 +173,9 @@ main { max-width: 460px; margin: 0 auto; padding: 10px 18px 96px; }
 .lbl { font-size: 12px; letter-spacing: .12em; color: var(--mut); }
 #masterVal { color: var(--mint); font-weight: 700; font-size: 15px; }
 input[type=range] { width: 100%; accent-color: var(--mint); }
+.fade-row { display: flex; gap: 10px; margin-top: 6px; }
+.fade-item { flex: 1; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--mut); }
+.fade-item select { flex: 1; min-width: 0; }
 
 .add {
   width: 100%;
@@ -269,6 +272,10 @@ input[type=range] { width: 100%; accent-color: var(--mint); }
   gap: 2px;
 }
 
+.rain-wrap { display: flex; align-items: center; gap: 10px; margin-top: 8px; border-top: 1px solid var(--line); padding-top: 8px; flex-wrap: wrap; }
+.rain-wrap input { accent-color: var(--mint); }
+.rain-wrap label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); cursor: pointer; }
+.rain-wrap .hint { flex-basis: 100%; margin: 2px 0 0; font-size: 11px; color: var(--mut); line-height: 1.5; }
 </style>
 </head>
 <body>
@@ -287,12 +294,47 @@ input[type=range] { width: 100%; accent-color: var(--mint); }
   </section>
 
   <section class="card">
+   <div class="master-head">
+    <span class="lbl">ソルフェジオ周波数 (Hz)</span>
+   </div>
+   <div class="chips" id="solfChips"></div>
+  </section>
+
+  <section class="card">
     <div class="master-head">
       <span class="lbl">MASTER VOLUME</span>
       <span id="masterVal">50</span>
     </div>
     <input type="range" id="master" min="0" max="100" value="50" aria-label="全体の音量">
-  </section>
+
+  <section class="card">
+   <div class="master-head">
+    <span class="lbl">FADE IN / OUT</span>
+   </div>
+   <div class="fade-row">
+    <label class="fade-item">IN
+     <select class="ftype" id="fadeIn">
+      <option value="0" selected>なし</option>
+      <option value="0.5">0.5秒</option>
+      <option value="1">1秒</option>
+      <option value="2">2秒</option>
+     </select>
+    </label>
+    <label class="fade-item">OUT
+     <select class="ftype" id="fadeOut">
+      <option value="0" selected>なし</option>
+      <option value="0.5">0.5秒</option>
+      <option value="1">1秒</option>
+      <option value="2">2秒</option>
+     </select>
+    </label>
+   </div>
+  
+<div class="rain-wrap">
+<label for="rain"><input type="checkbox" id="rain"> ☂ 雨音（ランダムループ）</label>
+<p class="hint">聞き流し用: 各音がランダムなタイミングでフェードイン・再生・フェードアウト・休止を繰り返します</p>
+</div>
+</section>
 
   <div id="rows"></div>
   <button class="add" id="add">＋ 音を追加する</button>
@@ -311,17 +353,17 @@ input[type=range] { width: 100%; accent-color: var(--mint); }
 const MAX_ROWS = 8;
 const LETTERS = 'ABCDEFGH';
 const PRESETS = [
-  { label: 'A=440', freqs: [440] },
   { label: '純正5度', freqs: [440, 660] },
   { label: '長三和音', freqs: [440, 550, 660] },
   { label: 'オクターブ', freqs: [220, 440, 880] },
   { label: '倍音列', freqs: [220, 440, 660, 880] },
 ];
+const SOLFEGGIO = [174, 285, 396, 417, 528, 639, 741, 852, 936];
 
 const $ = (s) => document.querySelector(s);
 const vibrate = (ms) => { if (navigator.vibrate) navigator.vibrate(ms); };
 
-const audio = { ctx: null, master: null, playing: false, lock: null };
+const audio = { ctx: null, master: null, playing: false, lock: null, fadeTimer: null };
 const rows = [];
 let selIdx = 0;
 
@@ -355,38 +397,65 @@ function applyRow(r) {
 }
 
 async function setPlaying(p) {
+  if (audio.fadeTimer) { clearTimeout(audio.fadeTimer); audio.fadeTimer = null; }
   ensureCtx();
   if (p) {
-    if (audio.ctx.state !== 'running') await audio.ctx.resume();
+    if (audio.ctx.state !== 'running') await audio.ctx.resume()
+    if (rain.on) { startRain(); audio.playing = true; requestLock(); $('#play').classList.toggle('playing', true); return; }
+;
     const base = audio.ctx.currentTime;
+    const fin = fadeSec('#fadeIn');
     rows.forEach((r) => {
       ensureOsc(r);
+      const tgt = r.on ? r.gain : 0;
       if (!r.started) {
         r.startAt = base + r.delay / 1000;
         r.osc.type = r.wave;
         r.osc.frequency.value = r.freq;
         r.osc.start(r.startAt);
-        r.g.gain.setTargetAtTime(r.on ? r.gain : 0, r.startAt, 0.02);
+        fadeEnv(r.g.gain, tgt, r.startAt, fin, true);
         r.started = true;
+      } else {
+        fadeEnv(r.g.gain, tgt, audio.ctx.currentTime, fin, false);
       }
     });
     audio.playing = true;
     requestLock();
   } else {
-    rows.forEach((r) => {
-      if (r.osc) {
-        try { r.osc.stop(); } catch (_) {}
-        r.osc.disconnect();
-        r.g.disconnect();
-      }
-      r.osc = null;
-      r.g = null;
-      r.started = false;
-    });
-    audio.playing = false;
+    const fout = fadeSec('#fadeOut');
+    if (fout > 0) {
+      const now = audio.ctx.currentTime;
+      rows.forEach((r) => { if (r.osc) fadeEnv(r.g.gain, 0, now, fout, false); });
+      audio.fadeTimer = setTimeout(() => { audio.fadeTimer = null; rows.forEach(stopRow); }, fout * 1000 + 80);
+    } else {
+      rows.forEach(stopRow);
+    }
+    clearRainTimers();
+  audio.playing = false;
     releaseLock();
   }
   $('#play').classList.toggle('playing', audio.playing);
+}
+
+function fadeSec(sel) { const v = Number($(sel).value); return isFinite(v) && v > 0 ? v : 0; }
+function fadeEnv(gain, target, t, fade, fromZero) {
+  gain.cancelScheduledValues(t);
+  if (fade > 0) {
+    gain.setValueAtTime(fromZero ? 0 : gain.value, t);
+    gain.linearRampToValueAtTime(target, t + fade);
+  } else {
+    gain.setTargetAtTime(target, t, 0.02);
+  }
+}
+function stopRow(r) {
+  if (r.osc) {
+    try { r.osc.stop(); } catch (_) {}
+    r.osc.disconnect();
+    r.g.disconnect();
+  }
+  r.osc = null;
+  r.g = null;
+  r.started = false;
 }
 
 async function togglePlay() {
@@ -405,6 +474,40 @@ function releaseLock() {
   audio.lock = null;
 }
 
+/* ---------- 雨音モード（ランダムループ） ---------- */
+const rain = { on: false };
+function rnd(a, b) { return a + Math.random() * (b - a); }
+function rainCycle(r) { // ponytail: setTimeout 駆動のため長時間稼働でドリフト。要るなら AudioContext 時間軸に直す
+  if (!rain.on || !r.osc) return;
+  const now = audio.ctx.currentTime;
+  const fin = rnd(0.6, 3), hold = rnd(1.5, 7), fout = rnd(0.8, 4), gap = rnd(1, 5);
+  const tgt = r.on ? r.gain : 0;
+  const g = r.g.gain;
+  g.cancelScheduledValues(now);
+  g.setValueAtTime(g.value, now);
+  g.linearRampToValueAtTime(tgt, now + fin);
+  g.setValueAtTime(tgt, now + fin + hold);
+  g.linearRampToValueAtTime(0, now + fin + hold + fout);
+  r.rainTimer = setTimeout(rainCycle, (fin + hold + fout + gap) * 1000, r);
+}
+function startRain() {
+  if (!audio.ctx) ensureCtx();
+  const now = audio.ctx.currentTime;
+  rows.forEach((r) => {
+    ensureOsc(r);
+    if (!r.started) { r.startAt = now + r.delay / 1000; r.osc.type = r.wave; r.osc.frequency.value = r.freq; r.osc.start(r.startAt); r.started = true; }
+    rainCycle(r);
+  });
+}
+function stopRain() {
+  rows.forEach((r) => {
+    if (r.rainTimer) { clearTimeout(r.rainTimer); r.rainTimer = null; }
+    if (r.osc) r.g.gain.setTargetAtTime(r.on ? r.gain : 0, audio.ctx.currentTime, 0.05);
+  });
+}
+function clearRainTimers() {
+  rows.forEach((r) => { if (r.rainTimer) { clearTimeout(r.rainTimer); r.rainTimer = null; } });
+}
 /* ---------- 行の構築 ---------- */
 function readRowFromInput(r) {
   r.freq = Math.max(1, Math.round(Number(r.freqEl.value) || 0));
@@ -425,7 +528,7 @@ function makeRow(idx, freq) {
     '<div class="row-head">' +
       '<span class="key"></span>' +
       '<span class="freq-display"><span class="freqval">440</span><span class="unit">Hz</span></span>' +
-      '<button class="del-btn" type="button" aria-label="この音を削除">\u00d7</button>' +
+    '<button class="del-btn" type="button" aria-label="この音を削除">\u00d7</button>' +
     '</div>' +
     '<div class="row-controls">' +
       '<button class="fbtn" type="button" data-d="-1">\u2212</button>' +
@@ -449,6 +552,7 @@ function makeRow(idx, freq) {
   r.freqEl = rowEl.querySelector('.fnum');
   r.typeEl = rowEl.querySelector('.ftype');
   r.volEl = rowEl.querySelector('input[type=range]');
+
 
   r.keyEl.textContent = '音 ' + LETTERS[idx];
   r.freqEl.value = freq;
@@ -500,6 +604,7 @@ function selectRow(idx, quiet) {
 function removeRow(idx) {
   if (rows.length <= 1) return; /* 最低1行は残す */
   const r = rows[idx];
+  clearTimeout(r.rainTimer);
   if (!r) return;
 
   /* 音声停止・解放 */
@@ -576,6 +681,19 @@ function buildChips() {
     });
     wrap.appendChild(el);
   });
+
+  const sw = $('#solfChips');
+  if (sw) SOLFEGGIO.forEach((f) => {
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'chip';
+    el.textContent = f + ' Hz';
+    el.addEventListener('click', () => {
+      setSelFreq(f);
+      vibrate(5);
+    });
+    sw.appendChild(el);
+  });
 }
 
 function addRow() {
@@ -591,6 +709,7 @@ function init() {
   buildChips();
   addRow();
 
+  $('#rain').addEventListener('change', (e) => { rain.on = e.target.checked; if (audio.playing) { rain.on ? startRain() : stopRain(); } });
   $('#master').addEventListener('input', (e) => {
     const v = Number(e.target.value);
     $('#masterVal').textContent = v;
