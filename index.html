@@ -276,6 +276,8 @@ input[type=range] { width: 100%; accent-color: var(--mint); }
 .rain-wrap input { accent-color: var(--mint); }
 .rain-wrap label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); cursor: pointer; }
 .rain-wrap .hint { flex-basis: 100%; margin: 2px 0 0; font-size: 11px; color: var(--mut); line-height: 1.5; }
+.rain-opt { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--mut); }
+.rain-opt select { min-width: 0; flex: 1; }
 </style>
 </head>
 <body>
@@ -332,6 +334,20 @@ input[type=range] { width: 100%; accent-color: var(--mint); }
   
 <div class="rain-wrap">
 <label for="rain"><input type="checkbox" id="rain"> ☂ 雨音（ランダムループ）</label>
+<label class="rain-opt">IN
+<select id="rainFin">
+<option value="rand" selected>ランダム</option>
+<option value="none">なし</option>
+<option value="fixed">固定</option>
+</select>
+</label>
+<label class="rain-opt">OUT
+<select id="rainFout">
+<option value="rand" selected>ランダム</option>
+<option value="none">なし</option>
+<option value="fixed">固定</option>
+</select>
+</label>
 <p class="hint">聞き流し用: 各音がランダムなタイミングでフェードイン・再生・フェードアウト・休止を繰り返します</p>
 </div>
 </section>
@@ -477,17 +493,27 @@ function releaseLock() {
 /* ---------- 雨音モード（ランダムループ） ---------- */
 const rain = { on: false };
 function rnd(a, b) { return a + Math.random() * (b - a); }
+function fadeMode(sel, globalSel, a, b) {
+  const v = $(sel).value;
+  if (v === 'none') return 0;
+  if (v === 'fixed') return fadeSec(globalSel);
+  return rnd(a, b);
+}
+
 function rainCycle(r) { // ponytail: setTimeout 駆動のため長時間稼働でドリフト。要るなら AudioContext 時間軸に直す
   if (!rain.on || !r.osc) return;
   const now = audio.ctx.currentTime;
-  const fin = rnd(0.6, 3), hold = rnd(1.5, 7), fout = rnd(0.8, 4), gap = rnd(1, 5);
+  const fin = fadeMode('#rainFin', '#fadeIn', 0.6, 3);
+  const hold = rnd(1.5, 7);
+  const fout = fadeMode('#rainFout', '#fadeOut', 0.8, 4);
+  const gap = rnd(1, 5);
   const tgt = r.on ? r.gain : 0;
   const g = r.g.gain;
   g.cancelScheduledValues(now);
   g.setValueAtTime(g.value, now);
-  g.linearRampToValueAtTime(tgt, now + fin);
+  if (fin > 0) { g.linearRampToValueAtTime(tgt, now + fin); } else { g.setValueAtTime(tgt, now); }
   g.setValueAtTime(tgt, now + fin + hold);
-  g.linearRampToValueAtTime(0, now + fin + hold + fout);
+  if (fout > 0) { g.linearRampToValueAtTime(0, now + fin + hold + fout); } else { g.setValueAtTime(0, now + fin + hold); }
   r.rainTimer = setTimeout(rainCycle, (fin + hold + fout + gap) * 1000, r);
 }
 function startRain() {
