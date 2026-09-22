@@ -278,6 +278,67 @@ input[type=range] { width: 100%; accent-color: var(--mint); }
 .rain-wrap .hint { flex-basis: 100%; margin: 2px 0 0; font-size: 11px; color: var(--mut); line-height: 1.5; }
 .rain-opt { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--mut); }
 .rain-opt select { min-width: 0; flex: 1; }
+
+.control-btn {
+  background: var(--card);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s, transform .1s;
+  margin-left: 10px;
+}
+.control-btn:hover { border-color: var(--lav); }
+.control-btn:active { transform: scale(.96); }
+
+/* Zen Mode Breathing Circle */
+.zen-mode-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--bg0);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.5s ease-in-out, visibility 0.5s ease-in-out;
+}
+
+.zen-mode-overlay.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.breathing-circle {
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background-color: var(--mint);
+  opacity: 0.5;
+  animation: breathe 19s infinite ease-in-out; /* 4s in, 7s hold, 8s out */
+  transform: scale(1);
+}
+
+@keyframes breathe {
+  0% { transform: scale(1); opacity: 0.5; }
+  21% { transform: scale(1.2); opacity: 0.8; } /* Inhale (4s / 19s ~ 21%) */
+  58% { transform: scale(1.2); opacity: 0.8; } /* Hold (7s / 19s ~ 37%) (21% + 37% = 58%)*/
+  100% { transform: scale(1); opacity: 0.5; } /* Exhale (8s / 19s ~ 42%) (58% + 42% = 100%) */
+}
+
+/* UI Hiding in Zen Mode */
+.zen-active header,
+.zen-active main > *,
+.zen-active footer {
+  opacity: 0.1 !important;
+  pointer-events: none !important;
+}
 </style>
 </head>
 <body>
@@ -287,6 +348,7 @@ input[type=range] { width: 100%; accent-color: var(--mint); }
     <h1>ToneMix トーンミックス</h1>
     <p>複数の周波数を同時に鳴らせるトーンジェネレーター</p>
   </div>
+  <button id="zenModeButton" class="control-btn">Zen Mode</button>
 </header>
 
 <main>
@@ -352,6 +414,21 @@ input[type=range] { width: 100%; accent-color: var(--mint); }
 </div>
 </section>
 
+  <section class="card" id="sleepTimerSection">
+    <div class="master-head">
+      <span class="lbl">スリープタイマー</span>
+      <span id="sleepTimerDisplay"></span>
+    </div>
+    <div class="chips">
+      <button type="button" class="chip sleep-timer-btn" data-minutes="5">5分</button>
+      <button type="button" class="chip sleep-timer-btn" data-minutes="15">15分</button>
+      <button type="button" class="chip sleep-timer-btn" data-minutes="30">30分</button>
+      <button type="button" class="chip sleep-timer-btn" data-minutes="60">60分</button>
+      <button type="button" class="chip sleep-timer-btn" data-minutes="0">OFF</button>
+    </div>
+  </section>
+
+
   <div id="rows"></div>
   <button class="add" id="add">＋ 音を追加する</button>
 </main>
@@ -373,8 +450,12 @@ const PRESETS = [
   { label: '長三和音', freqs: [440, 550, 660] },
   { label: 'オクターブ', freqs: [220, 440, 880] },
   { label: '倍音列', freqs: [220, 440, 660, 880] },
+  { label: '深い瞑想', freqs: [528, 432] },
+  { label: '不安解放', freqs: [396, 417] },
+  { label: '睡眠', freqs: [174, 285] },
+  { label: 'シータ波バイノーラル', freqs: [216, 220] }
 ];
-const SOLFEGGIO = [174, 285, 396, 417, 528, 639, 741, 852, 936];
+const SOLFEGGIO = [{f: 174, t: '苦痛・安全'}, {f: 285, t: '自然治癒'}, {f: 396, t: '悲しみ・不安解放'}, {f: 417, t: 'マイナスからの変容'}, {f: 528, t: 'DNA修復・奇跡'}, {f: 639, t: '人間関係・調和'}, {f: 741, t: '表現力・問題解決'}, {f: 852, t: '直感・覚醒'}, {f: 963, t: '高次元・宇宙意識'}];
 
 const $ = (s) => document.querySelector(s);
 const vibrate = (ms) => { if (navigator.vibrate) navigator.vibrate(ms); };
@@ -544,7 +625,7 @@ function readRowFromInput(r) {
 
 function makeRow(idx, freq) {
   const r = {
-    idx, freq, wave: 'sine', gain: 0.5, on: true,
+    idx, freq, wave: 'sine', gain: 0.5, pan: 0, on: true,
     osc: null, g: null, started: false, delay: idx * 60,
   };
 
@@ -570,6 +651,10 @@ function makeRow(idx, freq) {
     '<div class="row-volume">' +
       '<span class="vlabel">\u97f3\u91cf</span>' +
       '<input type="range" min="0" max="100" value="50" aria-label="\u97f3\u306e\u97f3\u91cf">' +
+    '</div>' +
+    '<div class="row-volume">' +
+      '<span class="vlabel">L/R</span>' +
+      '<input type="range" class="pan" min="-1" max="1" step="0.1" value="0" aria-label="パン">' +
     '</div>';
 
   r.el = rowEl;
@@ -713,9 +798,9 @@ function buildChips() {
     const el = document.createElement('button');
     el.type = 'button';
     el.className = 'chip';
-    el.textContent = f + ' Hz';
+    el.innerHTML = `${f.f} Hz<div class="hint" style="color:var(--mut);font-size:11px;margin-top:2px;">${f.t}</div>`;
     el.addEventListener('click', () => {
-      setSelFreq(f);
+      setSelFreq(f.f);
       vibrate(5);
     });
     sw.appendChild(el);
@@ -746,10 +831,71 @@ function init() {
     addRow();
   });
   $('#play').addEventListener('click', togglePlay);
+  
+  // Zen Mode toggle
+  const zenBtn = document.getElementById('zenModeButton');
+  const overlay = document.getElementById('zenModeOverlay');
+  
+  function toggleZen() {
+    document.body.classList.toggle('zen-active');
+    if (overlay) overlay.classList.toggle('active');
+  }
+
+  if (zenBtn) zenBtn.addEventListener('click', toggleZen);
+  if (overlay) overlay.addEventListener('click', toggleZen);
 }
+
+// Sleep Timer functions (added)
+let sleepTimerId = null;
+let sleepTimerEndTime = 0;
+const sleepTimerDisplay = $("#sleepTimerDisplay");
+
+function updateSleepTimerDisplay() {
+  if (sleepTimerId) {
+    const remainingMs = sleepTimerEndTime - Date.now();
+    if (remainingMs <= 0) {
+      stopSleepTimer();
+      setPlaying(false); // Stop all sounds
+      return;
+    }
+    const minutes = Math.floor(remainingMs / (1000 * 60));
+    const seconds = Math.floor((remainingMs % (1000 * 60)) / 1000);
+    sleepTimerDisplay.textContent = `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+  } else {
+    sleepTimerDisplay.textContent = "";
+  }
+}
+
+function startSleepTimer(minutes) {
+  stopSleepTimer(); // Clear any existing timer
+  if (minutes > 0) {
+    sleepTimerEndTime = Date.now() + minutes * 60 * 1000;
+    sleepTimerId = setInterval(updateSleepTimerDisplay, 1000);
+    updateSleepTimerDisplay(); // Initial display update
+  }
+}
+
+function stopSleepTimer() {
+  if (sleepTimerId) {
+    clearInterval(sleepTimerId);
+    sleepTimerId = null;
+    sleepTimerEndTime = 0;
+    sleepTimerDisplay.textContent = "";
+  }
+}
+
+// Register sleep timer button listeners
+document.querySelectorAll('.sleep-timer-btn').forEach(button => {
+  button.addEventListener('click', () => {
+    const minutes = parseInt(button.dataset.minutes);
+    startSleepTimer(minutes);
+    vibrate(5);
+  });
+});
 
 document.addEventListener('DOMContentLoaded', init);
 
 </script>
+<div class="zen-mode-overlay" id="zenModeOverlay"><div class="breathing-circle"></div></div>
 </body>
 </html>
