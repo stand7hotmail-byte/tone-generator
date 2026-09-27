@@ -45,10 +45,40 @@ body {
 button, select, input { font-family: inherit; }
 
 /* ヘッダー */
-header {
+  header
   padding: calc(env(safe-area-inset-top) + 20px) 18px 8px;
   max-width: 460px;
   margin: 0 auto;
+
+  /* 情報セクション */
+  .info-section
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 20px 18px;
+  color: var(--text);
+  line-height: 1.6;
+  
+  .info-section h2
+  font-size: 20px;
+  color: var(--mint);
+  margin-bottom: 12px;
+  
+  .info-section h3
+  font-size: 16px;
+  color: var(--lav);
+  margin-top: 20px;
+  margin-bottom: 8px;
+  
+  .info-section p
+  margin-bottom: 12px;
+  
+  .info-section ul,
+  .info-section ol
+  margin: 12px 0;
+  padding-left: 24px;
+  
+  .info-section li
+  margin-bottom: 8px
 }
 .brand h1 {
   margin: 0;
@@ -352,6 +382,27 @@ input[type=range] { width: 100%; accent-color: var(--mint); }
   </div>
   <button id="zenModeButton" class="control-btn">Zen Mode</button>
 </header>
+
+<section class="info-section">
+  <h2>トーンジェネレーターとは</h2>
+  <p>トーンジェネレーターは、指定した周波数（Hz）の音を生成するツールです。音楽制作、聴覚テスト、音叉の代わりなど、さまざまな用途に使われます。</p>
+  
+  <h3>周波数（Hz）について</h3>
+  <p>Hz（ヘルツ）は、音の振動数を示す単位です。数値が高いほど高い音、低い数値ほど低い音になります。</p>
+  <ul>
+    <li><strong>440Hz</strong>：国際標準音（A4）</li>
+    <li><strong>880Hz</strong>：1オクターブ上のA5</li>
+    <li><strong>20Hz - 20,000Hz</strong>：人間が聞こえる音の範囲</li>
+  </ul>
+
+  <h3>使い方</h3>
+  <ol>
+    <li>「＋」ボタンをタップして周波数を追加</li>
+    <li>各スライダーで周波数と音量を調整</li>
+    <li>再生／停止ボタンでコントロール</li>
+  </ol>
+  <p>複数の周波数を同時に鳴らすことで、和音や聴覚トレーニングにも活用できます。</p>
+</section>
 
 <!-- AdSense Ad Unit -->
 <div style="text-align:center; margin: 10px;">
